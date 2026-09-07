@@ -1,0 +1,99 @@
+Project AppServiciosDomesticos_MVP {
+  database_type: 'PostgreSQL'
+  Note: 'Versión recortada para el MVP de 4 semanas. Prioriza resolver la estimación de costos sin visita previa, usando tarifas fijas y opciones de selección en vez de fotografías. Fotos, cuadrillas, reseñas y tarifario por proveedor quedan para futuras iteraciones (ver diseño completo).'
+}
+
+// ==========================================
+// 1. USUARIOS (aprovechando Supabase Auth)
+// ==========================================
+
+Enum rol_usuario {
+  cliente
+  proveedor
+}
+
+Table perfiles {
+  id uuid [pk, note: 'Mismo id que auth.users(id) de Supabase Auth. No se guarda contraseña aquí: la maneja Supabase Auth.']
+  rol rol_usuario [not null]
+  nombre varchar [not null]
+  telefono varchar
+  fecha_creacion timestamp [default: `now()`]
+
+  Note: 'Datos de perfil de cada usuario. Un mismo usuario es cliente o proveedor, no ambos, validado en la aplicación.'
+}
+
+// ==========================================
+// 2. CATÁLOGO DE SERVICIOS (tarifas fijas)
+// ==========================================
+
+Table tipos_servicio {
+  id int [pk, increment]
+  nombre varchar [unique, not null, note: 'Ej. Limpieza residencial, Jardinería / corte de césped']
+  tarifa_base decimal [not null, note: 'Tarifa fija estándar del MVP, definida por el equipo, no configurable por proveedor']
+  tarifa_por_m2 decimal [not null]
+
+  Note: 'Catálogo único y fijo para todos los proveedores en el MVP (Apartado 5 del informe). Editable directamente en la tabla sin tocar código, pero no hay panel de configuración por proveedor.'
+}
+
+// ==========================================
+// 3. PROPIEDADES (simplificado, sin áreas por zona)
+// ==========================================
+
+Enum tipo_propiedad {
+  casa
+  apartamento
+  local_comercial
+  otro
+}
+
+Table propiedades {
+  id int [pk, increment]
+  id_cliente uuid [ref: > perfiles.id]
+  direccion varchar [not null]
+  tipo_propiedad tipo_propiedad
+  metros_cuadrados decimal [not null]
+
+  Note: 'Sin desglose por áreas/zonas: en el MVP se evalúa la propiedad como una unidad, no por habitación o zona de jardín.'
+}
+
+// ==========================================
+// 4. SOLICITUDES DE PRESUPUESTO (núcleo del MVP)
+// ==========================================
+
+// Reemplaza a la evaluación por fotografías. El multiplicador asociado a cada
+// valor (ej. 1.0 / 1.3 / 1.6) se aplica en el código del backend, no en la base de datos.
+Enum estado_espacio {
+  mantenimiento_regular
+  maleza_alta
+  abandono_total
+}
+
+Enum turno_dia {
+  manana
+  tarde
+}
+
+Enum estado_presupuesto {
+  solicitado
+  revisado
+  aprobado
+  rechazado
+}
+
+Table solicitudes_presupuesto {
+  id int [pk, increment]
+  id_cliente uuid [ref: > perfiles.id]
+  id_proveedor uuid [ref: > perfiles.id, note: 'Proveedor al que se dirige la solicitud']
+  id_propiedad int [ref: > propiedades.id]
+  id_tipo_servicio int [ref: > tipos_servicio.id]
+  estado_espacio estado_espacio [not null, note: 'Reemplaza la carga de fotos: selección de opción múltiple del cliente']
+  fecha_deseada date [not null]
+  turno turno_dia [not null]
+  pre_presupuesto decimal [note: 'Calculado automáticamente: tarifa_base + (m2 × tarifa_por_m2) × multiplicador_según_estado_espacio']
+  precio_final decimal [note: 'Editado o confirmado manualmente por el proveedor antes de enviarlo al cliente (Sprint 3)']
+  estado estado_presupuesto [default: 'solicitado']
+  notas_cliente text
+  fecha_creacion timestamp [default: `now()`]
+
+  Note: 'Tabla central del MVP. Un cliente solicita, un proveedor responde: sin competencia entre múltiples proveedores por la misma solicitud (eso queda para una iteración futura tipo marketplace).'
+}
