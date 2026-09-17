@@ -4,6 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
+import Badge from "@/components/ui/Badge";
+import Button from "@/components/ui/Button";
+import { TarjetasSkeleton } from "@/components/ui/Skeleton";
+import { useToast } from "@/components/ui/Toast";
+import { mensajeDeError } from "@/lib/errors";
+import { formatearFecha, formatearMoneda } from "@/lib/format";
 import { supabase } from "@/lib/supabaseClient";
 
 type MisSolicitud = {
@@ -16,13 +22,6 @@ type MisSolicitud = {
   precio_final: number | null;
   perfiles: { nombre: string }[];
   tipos_servicio: { nombre: string }[];
-};
-
-const BADGES: Record<string, string> = {
-  solicitado: "bg-blue-100 text-blue-700",
-  revisado: "bg-amber-100 text-amber-700",
-  aprobado: "bg-green-100 text-green-700",
-  rechazado: "bg-red-100 text-red-700",
 };
 
 const TURNOS: Record<string, string> = {
@@ -46,6 +45,7 @@ export default function MisSolicitudesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actingId, setActingId] = useState<number | null>(null);
+  const { mostrar } = useToast();
 
   const cargar = useCallback(async () => {
     const {
@@ -81,13 +81,18 @@ export default function MisSolicitudesPage() {
 
   async function decidir(id: number, fn: "aprobar_solicitud" | "rechazar_solicitud") {
     setActingId(id);
-    setError(null);
     const { error } = await supabase.rpc(fn, { p_solicitud_id: id });
     setActingId(null);
     if (error) {
-      setError(error.message);
+      mostrar(mensajeDeError(error), "error");
       return;
     }
+    mostrar(
+      `Solicitud #${id} ${
+        fn === "aprobar_solicitud" ? "aprobada" : "rechazada"
+      } correctamente.`,
+      "exito"
+    );
     cargar();
   }
 
@@ -116,12 +121,10 @@ export default function MisSolicitudesPage() {
         </p>
       )}
 
-      {loading && (
-        <p className="mt-8 text-sm text-zinc-500">Cargando…</p>
-      )}
+      {loading && <TarjetasSkeleton />}
 
       {!loading && solicitudes.length === 0 && (
-        <p className="mt-8 rounded-md bg-zinc-50 p-4 text-sm text-zinc-500">
+        <p className="mt-8 rounded-md bg-white p-4 text-sm text-zinc-500">
           Todavía no enviaste solicitudes.{" "}
           <Link href="/solicitar" className="font-medium text-zinc-900 underline">
             Creá una ahora
@@ -143,11 +146,7 @@ export default function MisSolicitudesPage() {
                   · {toList(s.tipos_servicio)[0]?.nombre ?? "—"}
                 </span>
               </p>
-              <span
-                className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium capitalize ${BADGES[s.estado]}`}
-              >
-                {s.estado}
-              </span>
+              <Badge estado={s.estado} />
             </div>
 
             <dl className="mt-3 grid gap-x-4 gap-y-1 text-sm sm:grid-cols-2">
@@ -160,7 +159,7 @@ export default function MisSolicitudesPage() {
               <div className="flex justify-between">
                 <dt className="text-zinc-500">Fecha deseada</dt>
                 <dd className="font-medium text-zinc-900">
-                  {s.fecha_deseada} · {TURNOS[s.turno]}
+                  {formatearFecha(s.fecha_deseada)} · {TURNOS[s.turno]}
                 </dd>
               </div>
               <div className="flex justify-between">
@@ -172,14 +171,14 @@ export default function MisSolicitudesPage() {
               <div className="flex justify-between">
                 <dt className="text-zinc-500">Pre-presupuesto</dt>
                 <dd className="font-medium text-zinc-900">
-                  ${Number(s.pre_presupuesto ?? 0).toFixed(2)}
+                  {formatearMoneda(Number(s.pre_presupuesto ?? 0))}
                 </dd>
               </div>
               <div className="flex justify-between">
                 <dt className="text-zinc-500">Precio final</dt>
                 <dd className="font-medium text-zinc-900">
                   {s.precio_final !== null
-                    ? `$${Number(s.precio_final).toFixed(2)}`
+                    ? formatearMoneda(Number(s.precio_final))
                     : "Pendiente"}
                 </dd>
               </div>
@@ -187,20 +186,20 @@ export default function MisSolicitudesPage() {
 
             {s.estado === "revisado" && (
               <div className="mt-4 flex gap-3 border-t border-zinc-100 pt-4">
-                <button
+                <Button
+                  variant="success"
                   disabled={actingId !== null}
                   onClick={() => decidir(s.id, "aprobar_solicitud")}
-                  className="rounded-md bg-green-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-green-500 disabled:opacity-50"
                 >
                   Aprobar
-                </button>
-                <button
+                </Button>
+                <Button
+                  variant="danger"
                   disabled={actingId !== null}
                   onClick={() => decidir(s.id, "rechazar_solicitud")}
-                  className="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-500 disabled:opacity-50"
                 >
                   Rechazar
-                </button>
+                </Button>
               </div>
             )}
           </li>

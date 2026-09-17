@@ -4,7 +4,12 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Header from "@/components/Header";
+import Button from "@/components/ui/Button";
+import { Field, Select, TextInput } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
+import { mensajeDeError } from "@/lib/errors";
 import { calcularPrePresupuesto, MULTIPLICADORES, type EstadoEspacio } from "@/lib/estimacion";
+import { formatearMoneda } from "@/lib/format";
 import { supabase } from "@/lib/supabaseClient";
 
 type TipoServicio = {
@@ -32,6 +37,12 @@ const TURNOS: Record<string, string> = {
   tarde: "Tarde",
 };
 
+function hoyISO(): string {
+  const ahora = new Date();
+  const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000);
+  return local.toISOString().slice(0, 10);
+}
+
 export default function SolicitarPage() {
   const router = useRouter();
 
@@ -48,9 +59,8 @@ export default function SolicitarPage() {
   const [fecha, setFecha] = useState("");
   const [turno, setTurno] = useState("manana");
 
-  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [successId, setSuccessId] = useState<number | null>(null);
+  const { mostrar } = useToast();
 
   const servicio = servicios.find((s) => s.id === idServicio);
   const m2 = Number.parseFloat(metros) || 0;
@@ -97,19 +107,12 @@ export default function SolicitarPage() {
     })();
   }, [router]);
 
-  const inputClass =
-    "w-full rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm text-zinc-900 focus:border-zinc-500 focus:outline-none";
-  const labelClass = "mb-1 block text-sm font-medium text-zinc-700";
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError(null);
-    setSuccessId(null);
 
     if (!userId) return;
     if (!proveedor) {
-      setError("Aún no hay proveedores registrados.");
-      setLoading(false);
+      mostrar("Aún no hay proveedores registrados.", "error");
       return;
     }
     if (idServicio === null) return;
@@ -118,7 +121,7 @@ export default function SolicitarPage() {
 
     const metrosNumber = Number.parseFloat(metros);
     if (!direccion || !metrosNumber || !fecha) {
-      setError("Completá dirección, metros cuadrados y fecha.");
+      mostrar("Completá dirección, metros cuadrados y fecha.", "error");
       setLoading(false);
       return;
     }
@@ -147,7 +150,7 @@ export default function SolicitarPage() {
         .select("id")
         .single();
       if (propError) {
-        setError(propError.message);
+        mostrar(mensajeDeError(propError), "error");
         setLoading(false);
         return;
       }
@@ -170,13 +173,14 @@ export default function SolicitarPage() {
       .single();
 
     if (solError) {
-      setError(solError.message);
+      mostrar(mensajeDeError(solError), "error");
       setLoading(false);
       return;
     }
 
-    setSuccessId(solicitud.id);
+    mostrar(`Solicitud #${solicitud.id} enviada con éxito.`, "exito");
     setLoading(false);
+    router.push("/mis-solicitudes");
   }
 
   return (
@@ -207,32 +211,10 @@ export default function SolicitarPage() {
         </p>
       )}
 
-      {successId !== null && (
-        <div className="mt-6 rounded-md border border-green-200 bg-green-50 p-4">
-          <p className="text-sm font-medium text-green-800">
-            Solicitud enviada con éxito.
-          </p>
-          <p className="mt-1 text-sm text-green-700">
-            Número de solicitud:{" "}
-            <span className="font-semibold">#{successId}</span>
-          </p>
-          <Link
-            href="/mis-solicitudes"
-            className="mt-3 inline-block text-sm font-medium text-green-800 hover:underline"
-          >
-            Ver mis solicitudes
-          </Link>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
-        <div>
-          <label htmlFor="servicio" className={labelClass}>
-            Tipo de servicio
-          </label>
-          <select
+        <Field label="Tipo de servicio" htmlFor="servicio">
+          <Select
             id="servicio"
-            className={inputClass}
             value={idServicio ?? ""}
             onChange={(e) => setIdServicio(Number(e.target.value))}
             disabled={servicios.length === 0}
@@ -243,31 +225,23 @@ export default function SolicitarPage() {
                 {s.nombre}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        <div>
-          <label htmlFor="direccion" className={labelClass}>
-            Dirección
-          </label>
-          <input
+        <Field label="Dirección" htmlFor="direccion">
+          <TextInput
             id="direccion"
             type="text"
             required
             placeholder="Calle y número"
-            className={inputClass}
             value={direccion}
             onChange={(e) => setDireccion(e.target.value)}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="tipoPropiedad" className={labelClass}>
-            Tipo de propiedad
-          </label>
-          <select
+        <Field label="Tipo de propiedad" htmlFor="tipoPropiedad">
+          <Select
             id="tipoPropiedad"
-            className={inputClass}
             value={tipoPropiedad}
             onChange={(e) => setTipoPropiedad(e.target.value)}
           >
@@ -276,33 +250,25 @@ export default function SolicitarPage() {
                 {label}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        <div>
-          <label htmlFor="metros" className={labelClass}>
-            Metros cuadrados
-          </label>
-          <input
+        <Field label="Metros cuadrados" htmlFor="metros">
+          <TextInput
             id="metros"
             type="number"
             min="0"
             step="any"
             required
             placeholder="Ej. 85"
-            className={inputClass}
             value={metros}
             onChange={(e) => setMetros(e.target.value)}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="estado" className={labelClass}>
-            Estado del espacio
-          </label>
-          <select
+        <Field label="Estado del espacio" htmlFor="estado">
+          <Select
             id="estado"
-            className={inputClass}
             value={estadoEspacio}
             onChange={(e) => setEstadoEspacio(e.target.value)}
           >
@@ -311,30 +277,23 @@ export default function SolicitarPage() {
                 {label}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        <div>
-          <label htmlFor="fecha" className={labelClass}>
-            Fecha deseada
-          </label>
-          <input
+        <Field label="Fecha deseada" htmlFor="fecha">
+          <TextInput
             id="fecha"
             type="date"
             required
-            className={inputClass}
+            min={hoyISO()}
             value={fecha}
             onChange={(e) => setFecha(e.target.value)}
           />
-        </div>
+        </Field>
 
-        <div>
-          <label htmlFor="turno" className={labelClass}>
-            Turno
-          </label>
-          <select
+        <Field label="Turno" htmlFor="turno">
+          <Select
             id="turno"
-            className={inputClass}
             value={turno}
             onChange={(e) => setTurno(e.target.value)}
           >
@@ -343,37 +302,31 @@ export default function SolicitarPage() {
                 {label}
               </option>
             ))}
-          </select>
-        </div>
+          </Select>
+        </Field>
 
-        {error && (
-          <p className="rounded-md bg-red-50 p-3 text-sm text-red-700">
-            {error}
-          </p>
-        )}
-
-        <button
+        <Button
           type="submit"
           disabled={loading || sinProveedor}
-          className="mt-2 rounded-md bg-zinc-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-50"
+          className="mt-2"
         >
           {loading ? "Enviando..." : "Enviar solicitud"}
-        </button>
+        </Button>
       </form>
 
-      <div className="mt-6 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+      <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
         <p className="text-sm text-zinc-500">
           Pre-presupuesto estimado ({ESTADOS_ESPACIO[estadoEspacio].toLowerCase()}:
           <span className="font-medium text-zinc-700"> ×{MULTIPLICADORES[estadoEspacio as EstadoEspacio]}</span> )
         </p>
         <p className="mt-1 text-2xl font-semibold text-zinc-900">
-          ${prePresupuesto.toFixed(2)}
+          {formatearMoneda(prePresupuesto)}
         </p>
         {servicio && (
           <p className="mt-2 text-xs text-zinc-500">
-            Tarifa base ${servicio.tarifa_base} + $
-            {servicio.tarifa_por_m2.toFixed(2)}/m². El proveedor podrá confirmar
-            o ajustar el precio final antes de enviártelo.
+            Tarifa base {formatearMoneda(servicio.tarifa_base)} +{" "}
+            {formatearMoneda(servicio.tarifa_por_m2)}/m². El proveedor podrá
+            confirmar o ajustar el precio final antes de enviártelo.
           </p>
         )}
       </div>

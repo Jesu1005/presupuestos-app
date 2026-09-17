@@ -17,6 +17,7 @@ Table perfiles {
   rol rol_usuario [not null]
   nombre varchar [not null]
   telefono varchar
+  email varchar [note: 'Guardado en perfiles para notificar sin depender de auth.users (no legible por RLS). Nullable: el registro siempre lo completa.']
   fecha_creacion timestamp [default: `now()`]
 
   Note: 'Datos de perfil de cada usuario. Un mismo usuario es cliente o proveedor, no ambos, validado en la aplicación.'
