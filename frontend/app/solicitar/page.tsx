@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import Header from "@/components/Header";
 import Button from "@/components/ui/Button";
 import { Field, Select, TextInput } from "@/components/ui/Field";
@@ -120,8 +119,8 @@ export default function SolicitarPage() {
     setLoading(true);
 
     const metrosNumber = Number.parseFloat(metros);
-    if (!direccion || !metrosNumber || !fecha) {
-      mostrar("Completá dirección, metros cuadrados y fecha.", "error");
+    if (!direccion || !metrosNumber || metrosNumber <= 0 || !fecha) {
+      mostrar("Completá dirección, metros cuadrados válidos y fecha.", "error");
       setLoading(false);
       return;
     }
@@ -186,151 +185,145 @@ export default function SolicitarPage() {
   return (
     <>
       <Header />
-      <main className="mx-auto w-full max-w-xl flex-1 px-4 py-10">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-zinc-900">
-          Solicitar presupuesto
-        </h1>
-        <Link
-          href="/mis-solicitudes"
-          className="text-sm font-medium text-zinc-900 hover:underline"
-        >
-          Mis solicitudes
-        </Link>
-      </div>
-      <p className="mt-1 text-sm text-zinc-500">
-        Completá los datos de tu propiedad. El pre-presupuesto se calcula
-        automáticamente.
-      </p>
+      <main className="mx-auto w-full max-w-2xl flex-1 px-4 py-8">
+        <div>
+          <h1 className="text-2xl font-semibold text-zinc-900">
+            Solicitar presupuesto
+          </h1>
+          <p className="mt-1 text-sm text-zinc-500">
+            Completá los datos de tu propiedad. El pre-presupuesto se calcula
+            automáticamente.
+          </p>
+        </div>
 
-      {sinProveedor && (
-        <p className="mt-6 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
-          Todavía no hay ningún proveedor registrado. Registrate un proveedor
-          primero (o pedile a otro usuario que se registre con rol proveedor)
-          para poder enviar solicitudes.
-        </p>
-      )}
-
-      <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
-        <Field label="Tipo de servicio" htmlFor="servicio">
-          <Select
-            id="servicio"
-            value={idServicio ?? ""}
-            onChange={(e) => setIdServicio(Number(e.target.value))}
-            disabled={servicios.length === 0}
-          >
-            {servicios.length === 0 && <option value="">Cargando…</option>}
-            {servicios.map((s) => (
-              <option key={s.id} value={s.id}>
-                {s.nombre}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Dirección" htmlFor="direccion">
-          <TextInput
-            id="direccion"
-            type="text"
-            required
-            placeholder="Calle y número"
-            value={direccion}
-            onChange={(e) => setDireccion(e.target.value)}
-          />
-        </Field>
-
-        <Field label="Tipo de propiedad" htmlFor="tipoPropiedad">
-          <Select
-            id="tipoPropiedad"
-            value={tipoPropiedad}
-            onChange={(e) => setTipoPropiedad(e.target.value)}
-          >
-            {Object.entries(TIPOS_PROPIEDAD).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Metros cuadrados" htmlFor="metros">
-          <TextInput
-            id="metros"
-            type="number"
-            min="0"
-            step="any"
-            required
-            placeholder="Ej. 85"
-            value={metros}
-            onChange={(e) => setMetros(e.target.value)}
-          />
-        </Field>
-
-        <Field label="Estado del espacio" htmlFor="estado">
-          <Select
-            id="estado"
-            value={estadoEspacio}
-            onChange={(e) => setEstadoEspacio(e.target.value)}
-          >
-            {Object.entries(ESTADOS_ESPACIO).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Field label="Fecha deseada" htmlFor="fecha">
-          <TextInput
-            id="fecha"
-            type="date"
-            required
-            min={hoyISO()}
-            value={fecha}
-            onChange={(e) => setFecha(e.target.value)}
-          />
-        </Field>
-
-        <Field label="Turno" htmlFor="turno">
-          <Select
-            id="turno"
-            value={turno}
-            onChange={(e) => setTurno(e.target.value)}
-          >
-            {Object.entries(TURNOS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </Select>
-        </Field>
-
-        <Button
-          type="submit"
-          disabled={loading || sinProveedor}
-          className="mt-2"
-        >
-          {loading ? "Enviando..." : "Enviar solicitud"}
-        </Button>
-      </form>
-
-      <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
-        <p className="text-sm text-zinc-500">
-          Pre-presupuesto estimado ({ESTADOS_ESPACIO[estadoEspacio].toLowerCase()}:
-          <span className="font-medium text-zinc-700"> ×{MULTIPLICADORES[estadoEspacio as EstadoEspacio]}</span> )
-        </p>
-        <p className="mt-1 text-2xl font-semibold text-zinc-900">
-          {formatearMoneda(prePresupuesto)}
-        </p>
-        {servicio && (
-          <p className="mt-2 text-xs text-zinc-500">
-            Tarifa base {formatearMoneda(servicio.tarifa_base)} +{" "}
-            {formatearMoneda(servicio.tarifa_por_m2)}/m². El proveedor podrá
-            confirmar o ajustar el precio final antes de enviártelo.
+        {sinProveedor && (
+          <p className="mt-6 rounded-md bg-amber-50 p-3 text-sm text-amber-800">
+            Todavía no hay ningún proveedor registrado. Registrate un proveedor
+            primero (o pedile a otro usuario que se registre con rol proveedor)
+            para poder enviar solicitudes.
           </p>
         )}
-      </div>
-    </main>
+
+        <form onSubmit={handleSubmit} className="mt-6 flex flex-col gap-4">
+          <Field label="Tipo de servicio" htmlFor="servicio">
+            <Select
+              id="servicio"
+              value={idServicio ?? ""}
+              onChange={(e) => setIdServicio(Number(e.target.value))}
+              disabled={servicios.length === 0}
+            >
+              {servicios.length === 0 && <option value="">Cargando…</option>}
+              {servicios.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.nombre}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Dirección" htmlFor="direccion">
+            <TextInput
+              id="direccion"
+              type="text"
+              required
+              placeholder="Calle y número"
+              value={direccion}
+              onChange={(e) => setDireccion(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Tipo de propiedad" htmlFor="tipoPropiedad">
+            <Select
+              id="tipoPropiedad"
+              value={tipoPropiedad}
+              onChange={(e) => setTipoPropiedad(e.target.value)}
+            >
+              {Object.entries(TIPOS_PROPIEDAD).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Metros cuadrados" htmlFor="metros">
+            <TextInput
+              id="metros"
+              type="number"
+              min="0"
+              step="any"
+              required
+              placeholder="Ej. 85"
+              value={metros}
+              onChange={(e) => setMetros(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Estado del espacio" htmlFor="estado">
+            <Select
+              id="estado"
+              value={estadoEspacio}
+              onChange={(e) => setEstadoEspacio(e.target.value)}
+            >
+              {Object.entries(ESTADOS_ESPACIO).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Field label="Fecha deseada" htmlFor="fecha">
+            <TextInput
+              id="fecha"
+              type="date"
+              required
+              min={hoyISO()}
+              value={fecha}
+              onChange={(e) => setFecha(e.target.value)}
+            />
+          </Field>
+
+          <Field label="Turno" htmlFor="turno">
+            <Select
+              id="turno"
+              value={turno}
+              onChange={(e) => setTurno(e.target.value)}
+            >
+              {Object.entries(TURNOS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+
+          <Button
+            type="submit"
+            disabled={loading || sinProveedor}
+            className="mt-2"
+          >
+            {loading ? "Enviando..." : "Enviar solicitud"}
+          </Button>
+        </form>
+
+        <div className="mt-6 rounded-lg border border-zinc-200 bg-white p-4">
+          <p className="text-sm text-zinc-500">
+            Pre-presupuesto estimado ({ESTADOS_ESPACIO[estadoEspacio].toLowerCase()}:
+            <span className="font-medium text-zinc-700"> ×{MULTIPLICADORES[estadoEspacio as EstadoEspacio]}</span> )
+          </p>
+          <p className="mt-1 text-2xl font-semibold text-zinc-900">
+            {formatearMoneda(prePresupuesto)}
+          </p>
+          {servicio && (
+            <p className="mt-2 text-xs text-zinc-500">
+              Tarifa base {formatearMoneda(servicio.tarifa_base)} +{" "}
+              {formatearMoneda(servicio.tarifa_por_m2)}/m². El proveedor podrá
+              confirmar o ajustar el precio final antes de enviártelo.
+            </p>
+          )}
+        </div>
+      </main>
     </>
   );
 }
