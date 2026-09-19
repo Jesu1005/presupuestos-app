@@ -47,6 +47,8 @@ export default function Header() {
   const [nombre, setNombre] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
+  const esInicio = pathname === "/";
+
   useEffect(() => {
     let activo = true;
 
@@ -111,7 +113,7 @@ export default function Header() {
         </Link>
 
         <nav className="flex items-center gap-1">
-          {cargando ? null : rol ? (
+          {cargando ? null : rol && !esInicio ? (
             <>
               <div className="mr-1 flex items-center gap-2">
                 <Inicial nombre={nombre ?? ""} />
