@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import Button from "@/components/ui/Button";
 import { Field, Select, TextInput } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
-import { mensajeDeError } from "@/lib/errors";
+import { MENSAJE_ERROR_RED, mensajeDeError } from "@/lib/errors";
 import { calcularPrePresupuesto, MULTIPLICADORES, type EstadoEspacio } from "@/lib/estimacion";
 import { formatearMoneda } from "@/lib/format";
 import { supabase } from "@/lib/supabaseClient";
@@ -36,6 +36,12 @@ const TURNOS: Record<string, string> = {
   tarde: "Tarde",
 };
 
+type ErroresSolicitar = {
+  direccion?: string;
+  metros?: string;
+  fecha?: string;
+};
+
 function hoyISO(): string {
   const ahora = new Date();
   const local = new Date(ahora.getTime() - ahora.getTimezoneOffset() * 60000);
@@ -59,10 +65,14 @@ export default function SolicitarPage() {
   const [turno, setTurno] = useState("manana");
 
   const [loading, setLoading] = useState(false);
+  const [errores, setErrores] = useState<ErroresSolicitar>({});
   const { mostrar } = useToast();
 
   const servicio = servicios.find((s) => s.id === idServicio);
-  const m2 = Number.parseFloat(metros) || 0;
+  const metrosNumber = Number.parseFloat(metros);
+  const metrosValidos =
+    metros.trim() !== "" && !Number.isNaN(metrosNumber) && metrosNumber > 0;
+  const m2 = metrosValidos ? metrosNumber : 0;
   const prePresupuesto = servicio
     ? calcularPrePresupuesto(
         servicio.tarifa_base,
@@ -73,41 +83,83 @@ export default function SolicitarPage() {
     : 0;
 
   useEffect(() => {
+    let activo = true;
+
     (async () => {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) {
-        router.push("/login");
-        return;
-      }
-      setUserId(user.id);
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+        if (authError || !user) {
+          router.push("/login");
+          return;
+        }
+        if (!activo) return;
+        setUserId(user.id);
 
-      const { data: serviciosData } = await supabase
-        .from("tipos_servicio")
-        .select("id, nombre, tarifa_base, tarifa_por_m2")
-        .order("id");
-      setServicios(serviciosData ?? []);
-      if (serviciosData && serviciosData.length > 0) {
-        setIdServicio(serviciosData[0].id);
-      }
+        const { data: serviciosData } = await supabase
+          .from("tipos_servicio")
+          .select("id, nombre, tarifa_base, tarifa_por_m2")
+          .order("id");
+        if (activo) {
+          setServicios(serviciosData ?? []);
+          if (serviciosData && serviciosData.length > 0) {
+            setIdServicio(serviciosData[0].id);
+          }
+        }
 
-      const { data: proveedorData } = await supabase
-        .from("perfiles")
-        .select("id, nombre")
-        .eq("rol", "proveedor")
-        .limit(1);
-      if (proveedorData && proveedorData.length > 0) {
-        setProveedor(proveedorData[0]);
-      } else {
-        setSinProveedor(true);
+        const { data: proveedorData } = await supabase
+          .from("perfiles")
+          .select("id, nombre")
+          .eq("rol", "proveedor")
+          .limit(1);
+        if (activo) {
+          if (proveedorData && proveedorData.length > 0) {
+            setProveedor(proveedorData[0]);
+          } else {
+            setSinProveedor(true);
+          }
+        }
+      } catch {
+        if (activo) {
+          mostrar(MENSAJE_ERROR_RED, "error");
+        }
       }
     })();
-  }, [router]);
+
+    return () => {
+      activo = false;
+    };
+  }, [mostrar, router]);
+
+  function validar(): ErroresSolicitar {
+    const nuevos: ErroresSolicitar = {};
+
+    if (!direccion.trim()) {
+      nuevos.direccion = "Ingresá la dirección de la propiedad.";
+    }
+    if (!metros.trim() || !metrosValidos) {
+      nuevos.metros = "Ingresá una cantidad de metros cuadrados válida (mayor a 0).";
+    }
+    if (!fecha) {
+      nuevos.fecha = "Seleccioná una fecha deseada.";
+    } else if (fecha < hoyISO()) {
+      nuevos.fecha = "La fecha deseada no puede ser una fecha pasada.";
+    }
+    return nuevos;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    setErrores({});
+    const nuevosErrores = validar();
+    if (Object.values(nuevosErrores).some(Boolean)) {
+      setErrores(nuevosErrores);
+      mostrar("Revisá los campos marcados antes de enviar.", "error");
+      return;
+    }
 
     if (!userId) return;
     if (!proveedor) {
@@ -118,68 +170,66 @@ export default function SolicitarPage() {
 
     setLoading(true);
 
-    const metrosNumber = Number.parseFloat(metros);
-    if (!direccion || !metrosNumber || metrosNumber <= 0 || !fecha) {
-      mostrar("Completá dirección, metros cuadrados válidos y fecha.", "error");
-      setLoading(false);
-      return;
-    }
-
-    const { data: existente } = await supabase
-      .from("propiedades")
-      .select("id")
-      .eq("id_cliente", userId)
-      .eq("direccion", direccion)
-      .eq("tipo_propiedad", tipoPropiedad)
-      .eq("metros_cuadrados", metrosNumber)
-      .limit(1);
-
-    let idPropiedad: number;
-    if (existente && existente.length > 0) {
-      idPropiedad = existente[0].id;
-    } else {
-      const { data: nueva, error: propError } = await supabase
+    try {
+      const { data: existente } = await supabase
         .from("propiedades")
+        .select("id")
+        .eq("id_cliente", userId)
+        .eq("direccion", direccion)
+        .eq("tipo_propiedad", tipoPropiedad)
+        .eq("metros_cuadrados", metrosNumber)
+        .limit(1);
+
+      let idPropiedad: number;
+      if (existente && existente.length > 0) {
+        idPropiedad = existente[0].id;
+      } else {
+        const { data: nueva, error: propError } = await supabase
+          .from("propiedades")
+          .insert({
+            id_cliente: userId,
+            direccion,
+            tipo_propiedad: tipoPropiedad,
+            metros_cuadrados: metrosNumber,
+          })
+          .select("id")
+          .single();
+        if (propError) {
+          mostrar(mensajeDeError(propError), "error");
+          setLoading(false);
+          return;
+        }
+        idPropiedad = nueva.id;
+      }
+
+      const { data: solicitud, error: solError } = await supabase
+        .from("solicitudes_presupuesto")
         .insert({
           id_cliente: userId,
-          direccion,
-          tipo_propiedad: tipoPropiedad,
-          metros_cuadrados: metrosNumber,
+          id_proveedor: proveedor.id,
+          id_propiedad: idPropiedad,
+          id_tipo_servicio: idServicio,
+          estado_espacio: estadoEspacio,
+          fecha_deseada: fecha,
+          turno,
+          pre_presupuesto: Number(prePresupuesto.toFixed(2)),
         })
         .select("id")
         .single();
-      if (propError) {
-        mostrar(mensajeDeError(propError), "error");
+
+      if (solError) {
+        mostrar(mensajeDeError(solError), "error");
         setLoading(false);
         return;
       }
-      idPropiedad = nueva.id;
-    }
 
-    const { data: solicitud, error: solError } = await supabase
-      .from("solicitudes_presupuesto")
-      .insert({
-        id_cliente: userId,
-        id_proveedor: proveedor.id,
-        id_propiedad: idPropiedad,
-        id_tipo_servicio: idServicio,
-        estado_espacio: estadoEspacio,
-        fecha_deseada: fecha,
-        turno,
-        pre_presupuesto: Number(prePresupuesto.toFixed(2)),
-      })
-      .select("id")
-      .single();
-
-    if (solError) {
-      mostrar(mensajeDeError(solError), "error");
+      mostrar(`Solicitud #${solicitud.id} enviada con éxito.`, "exito");
       setLoading(false);
-      return;
+      router.push("/mis-solicitudes");
+    } catch {
+      setLoading(false);
+      mostrar(MENSAJE_ERROR_RED, "error");
     }
-
-    mostrar(`Solicitud #${solicitud.id} enviada con éxito.`, "exito");
-    setLoading(false);
-    router.push("/mis-solicitudes");
   }
 
   return (
@@ -221,14 +271,17 @@ export default function SolicitarPage() {
             </Select>
           </Field>
 
-          <Field label="Dirección" htmlFor="direccion">
+          <Field label="Dirección" htmlFor="direccion" error={errores.direccion}>
             <TextInput
               id="direccion"
               type="text"
               required
               placeholder="Calle y número"
               value={direccion}
-              onChange={(e) => setDireccion(e.target.value)}
+              onChange={(e) => {
+                setDireccion(e.target.value);
+                setErrores((prev) => ({ ...prev, direccion: undefined }));
+              }}
             />
           </Field>
 
@@ -246,7 +299,7 @@ export default function SolicitarPage() {
             </Select>
           </Field>
 
-          <Field label="Metros cuadrados" htmlFor="metros">
+          <Field label="Metros cuadrados" htmlFor="metros" error={errores.metros}>
             <TextInput
               id="metros"
               type="number"
@@ -255,7 +308,10 @@ export default function SolicitarPage() {
               required
               placeholder="Ej. 85"
               value={metros}
-              onChange={(e) => setMetros(e.target.value)}
+              onChange={(e) => {
+                setMetros(e.target.value);
+                setErrores((prev) => ({ ...prev, metros: undefined }));
+              }}
             />
           </Field>
 
@@ -273,14 +329,17 @@ export default function SolicitarPage() {
             </Select>
           </Field>
 
-          <Field label="Fecha deseada" htmlFor="fecha">
+          <Field label="Fecha deseada" htmlFor="fecha" error={errores.fecha}>
             <TextInput
               id="fecha"
               type="date"
               required
               min={hoyISO()}
               value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
+              onChange={(e) => {
+                setFecha(e.target.value);
+                setErrores((prev) => ({ ...prev, fecha: undefined }));
+              }}
             />
           </Field>
 
@@ -313,7 +372,7 @@ export default function SolicitarPage() {
             <span className="font-medium text-zinc-700"> ×{MULTIPLICADORES[estadoEspacio as EstadoEspacio]}</span> )
           </p>
           <p className="mt-1 text-2xl font-semibold text-zinc-900">
-            {formatearMoneda(prePresupuesto)}
+            {metrosValidos ? formatearMoneda(prePresupuesto) : "—"}
           </p>
           {servicio && (
             <p className="mt-2 text-xs text-zinc-500">

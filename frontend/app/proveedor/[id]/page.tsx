@@ -8,7 +8,7 @@ import Button from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { mensajeDeError } from "@/lib/errors";
+import { MENSAJE_ERROR_RED, mensajeDeError } from "@/lib/errors";
 import { MULTIPLICADORES, type EstadoEspacio } from "@/lib/estimacion";
 import { formatearFecha, formatearMoneda } from "@/lib/format";
 import { supabase } from "@/lib/supabaseClient";
@@ -52,42 +52,57 @@ export default function VerSolicitudPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [precioError, setPrecioError] = useState<string | null>(null);
   const { mostrar } = useToast();
 
   useEffect(() => {
+    let activo = true;
+
     (async () => {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) {
-        router.push("/login");
-        return;
-      }
-      setUserId(user.id);
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+        if (authError || !user) {
+          router.push("/login");
+          return;
+        }
+        if (!activo) return;
+        setUserId(user.id);
 
-      const { data, error } = await supabase
-        .from("solicitudes_presupuesto")
-        .select(
-          "id, estado, fecha_deseada, turno, estado_espacio, pre_presupuesto, precio_final, notas_cliente, perfiles!solicitudes_presupuesto_id_cliente_fkey(nombre), tipos_servicio(nombre, tarifa_base, tarifa_por_m2), propiedades(direccion, metros_cuadrados)"
-        )
-        .eq("id", Number(params.id))
-        .eq("id_proveedor", user.id)
-        .maybeSingle();
+        const { data, error } = await supabase
+          .from("solicitudes_presupuesto")
+          .select(
+            "id, estado, fecha_deseada, turno, estado_espacio, pre_presupuesto, precio_final, notas_cliente, perfiles!solicitudes_presupuesto_id_cliente_fkey(nombre), tipos_servicio(nombre, tarifa_base, tarifa_por_m2), propiedades(direccion, metros_cuadrados)"
+          )
+          .eq("id", Number(params.id))
+          .eq("id_proveedor", user.id)
+          .maybeSingle();
 
-      if (error || !data) {
-        setError(
-          "No se encontró la solicitud o no tenés permisos para verla."
-        );
-      } else {
-        const s = data as SolicitudDetalle;
-        setSolicitud(s);
-        setPrecioFinal(
-          s.precio_final !== null ? String(s.precio_final) : ""
-        );
+        if (error || !data) {
+          setError(
+            "No se encontró la solicitud o no tenés permisos para verla."
+          );
+        } else {
+          const s = data as SolicitudDetalle;
+          setSolicitud(s);
+          setPrecioFinal(
+            s.precio_final !== null ? String(s.precio_final) : ""
+          );
+        }
+      } catch {
+        if (activo) {
+          setError(MENSAJE_ERROR_RED);
+        }
+      } finally {
+        if (activo) setLoading(false);
       }
-      setLoading(false);
     })();
+
+    return () => {
+      activo = false;
+    };
   }, [params.id, router]);
 
   if (loading) {
@@ -124,30 +139,36 @@ export default function VerSolicitudPage() {
     if (!solicitud) return;
 
     const precio = Number.parseFloat(precioFinal.replace(",", "."));
-    if (!precio || precio <= 0) {
-      mostrar("Ingresá un precio final válido.", "error");
+    if (precioFinal.trim() === "" || Number.isNaN(precio) || precio <= 0) {
+      setPrecioError("Ingresá un precio final válido (mayor a 0).");
       return;
     }
+    setPrecioError(null);
 
     setSaving(true);
-    const { error: updateError } = await supabase
-      .from("solicitudes_presupuesto")
-      .update({ precio_final: precio, estado: "revisado" })
-      .eq("id", solicitud.id)
-      .eq("id_proveedor", userId ?? "");
+    try {
+      const { error: updateError } = await supabase
+        .from("solicitudes_presupuesto")
+        .update({ precio_final: precio, estado: "revisado" })
+        .eq("id", solicitud.id)
+        .eq("id_proveedor", userId ?? "");
 
-    if (updateError) {
-      mostrar(mensajeDeError(updateError), "error");
+      if (updateError) {
+        mostrar(mensajeDeError(updateError), "error");
+        setSaving(false);
+        return;
+      }
+
       setSaving(false);
-      return;
+      mostrar(
+        "Solicitud actualizada y marcada como «revisado». El cliente ya puede aprobarla o rechazarla.",
+        "exito"
+      );
+      setSolicitud({ ...solicitud, precio_final: precio, estado: "revisado" });
+    } catch {
+      setSaving(false);
+      mostrar(MENSAJE_ERROR_RED, "error");
     }
-
-    setSaving(false);
-    mostrar(
-      "Solicitud actualizada y marcada como «revisado». El cliente ya puede aprobarla o rechazarla.",
-      "exito"
-    );
-    setSolicitud({ ...solicitud, precio_final: precio, estado: "revisado" });
   }
 
   const servicio = toList(solicitud.tipos_servicio)[0];
@@ -257,6 +278,7 @@ export default function VerSolicitudPage() {
           label="Precio final"
           htmlFor="precioFinal"
           hint="Confirmá o ajustá el precio. Al guardar, la solicitud pasa a estado «revisado» y el cliente podrá aprobarla o rechazarla."
+          error={precioError ?? undefined}
         >
           <TextInput
             id="precioFinal"
@@ -266,7 +288,10 @@ export default function VerSolicitudPage() {
             required
             placeholder="Ej. 95.00"
             value={precioFinal}
-            onChange={(e) => setPrecioFinal(e.target.value)}
+            onChange={(e) => {
+              setPrecioFinal(e.target.value);
+              setPrecioError(null);
+            }}
           />
         </Field>
 

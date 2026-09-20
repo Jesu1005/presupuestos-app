@@ -1,31 +1,20 @@
 -- ==========================================
--- Webhook de Supabase -> n8n (nueva solicitud -> correo al proveedor)
+-- MIGRACIÓN OBSOLETA — INACTIVA
 --
--- Historia #9 del backlog: el proveedor recibe un correo automático cuando
--- llega una solicitud nueva. Alcance del MVP: un único webhook, disparado por
--- INSERT en solicitudes_presupuesto.
+-- Esta migración quedó obsoleta y fue reemplazada por
+-- 20260915000741_webhook_nueva_solicitud.sql, que implementa el webhook de
+-- nueva solicitud con la extensión pg_net.
 --
--- Supabase provee la función de trigger supabase_functions.http_request
--- (wrapper de pg_net), que ya construye el payload con la fila:
---   {"type":"INSERT","table":"solicitudes_presupuesto","schema":"public",
---    "record":{...},"old_record":null}
--- Es asíncrono: no bloquea ni frena el INSERT original.
+-- El contenido original creaba un trigger basado en
+-- supabase_functions.http_request (esquema de Database Webhooks que solo
+-- existe si se activa ese panel manualmente en el dashboard). Eso hacía que
+-- 'supabase db push' fallara en el proyecto de la nube antes de poder activar
+-- la feature.
 --
--- En local la base corre en un contenedor Docker, por lo que "localhost" sería
--- el propio contenedor. Se usa host.docker.internal para alcanzar n8n corriendo
--- en la máquina anfitriona (ruta /webhook/nueva-solicitud, puerto 5678).
--- Al desplegar en producción, reemplazar la URL por la del n8n desplegado.
+-- Se sustituye por un no-op (solo comentarios, cero sentencias SQL) para no
+-- romper el historial de migraciones: el archivo se conserva, pero la base
+-- recibe una migración vacía. El trigger viejo, de existir, se elimina de
+-- manera segura en la migración 20260915000741 con DROP TRIGGER IF EXISTS.
 --
--- No modifica el modelo de datos ni las policies RLS: solo agrega un trigger.
+-- No eliminar este archivo: rompería el historial de migraciones ya aplicadas.
 -- ==========================================
-
-create trigger "webhook_n8n_solicitud_nueva"
-after insert on public.solicitudes_presupuesto
-for each row
-execute function supabase_functions.http_request(
-  'http://host.docker.internal:5678/webhook/nueva-solicitud',
-  'POST',
-  '{"Content-Type":"application/json"}',
-  '{}',
-  '5000'
-);

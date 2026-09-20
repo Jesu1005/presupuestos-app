@@ -53,29 +53,36 @@ export default function Header() {
     let activo = true;
 
     (async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      try {
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
 
-      if (!activo) return;
+        if (!activo) return;
 
-      if (!user) {
-        setRol(null);
-        setNombre(null);
-        setCargando(false);
-        return;
-      }
+        if (!user) {
+          setRol(null);
+          setNombre(null);
+          return;
+        }
 
-      const { data } = await supabase
-        .from("perfiles")
-        .select("rol, nombre")
-        .eq("id", user.id)
-        .single();
+        const { data } = await supabase
+          .from("perfiles")
+          .select("rol, nombre")
+          .eq("id", user.id)
+          .single();
 
-      if (activo) {
-        setRol(data?.rol === "proveedor" ? "proveedor" : "cliente");
-        setNombre(data?.nombre ?? null);
-        setCargando(false);
+        if (activo) {
+          setRol(data?.rol === "proveedor" ? "proveedor" : "cliente");
+          setNombre(data?.nombre ?? null);
+        }
+      } catch {
+        if (activo) {
+          setRol(null);
+          setNombre(null);
+        }
+      } finally {
+        if (activo) setCargando(false);
       }
     })();
 
@@ -94,10 +101,13 @@ export default function Header() {
   }, []);
 
   async function cerrarSesion() {
-    await supabase.auth.signOut();
-    setRol(null);
-    setNombre(null);
-    router.push("/");
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      setRol(null);
+      setNombre(null);
+      router.push("/");
+    }
   }
 
   return (

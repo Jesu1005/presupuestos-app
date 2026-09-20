@@ -6,7 +6,7 @@ import Header from "@/components/Header";
 import Button from "@/components/ui/Button";
 import { Field, TextInput } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
-import { mensajeDeError } from "@/lib/errors";
+import { mensajeDeError, MENSAJE_ERROR_RED } from "@/lib/errors";
 import { supabase } from "@/lib/supabaseClient";
 
 export default function LoginPage() {
@@ -20,28 +20,36 @@ export default function LoginPage() {
     e.preventDefault();
     setLoading(true);
 
-    const { data, error: authError } =
-      await supabase.auth.signInWithPassword({ email, password });
+    try {
+      const { data, error: authError } =
+        await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        });
 
-    if (authError) {
-      mostrar(mensajeDeError(authError), "error");
+      if (authError) {
+        mostrar(mensajeDeError(authError), "error");
+        setLoading(false);
+        return;
+      }
+
+      const { data: perfil, error: perfilError } = await supabase
+        .from("perfiles")
+        .select("rol")
+        .eq("id", data.user.id)
+        .single();
+
+      if (perfilError || !perfil) {
+        mostrar("No se pudo obtener el perfil del usuario.", "error");
+        setLoading(false);
+        return;
+      }
+
+      router.push(perfil.rol === "cliente" ? "/solicitar" : "/proveedor");
+    } catch {
       setLoading(false);
-      return;
+      mostrar(MENSAJE_ERROR_RED, "error");
     }
-
-    const { data: perfil, error: perfilError } = await supabase
-      .from("perfiles")
-      .select("rol")
-      .eq("id", data.user.id)
-      .single();
-
-    if (perfilError || !perfil) {
-      mostrar("No se pudo obtener el perfil del usuario.", "error");
-      setLoading(false);
-      return;
-    }
-
-    router.push(perfil.rol === "cliente" ? "/solicitar" : "/proveedor");
   }
 
   return (

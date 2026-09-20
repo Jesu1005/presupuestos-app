@@ -8,7 +8,7 @@ import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { TarjetasSkeleton } from "@/components/ui/Skeleton";
 import { useToast } from "@/components/ui/Toast";
-import { mensajeDeError } from "@/lib/errors";
+import { MENSAJE_ERROR_RED, mensajeDeError } from "@/lib/errors";
 import { formatearFecha, formatearMoneda } from "@/lib/format";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -48,29 +48,34 @@ export default function MisSolicitudesPage() {
   const { mostrar } = useToast();
 
   const cargar = useCallback(async () => {
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      router.push("/login");
-      return;
-    }
+    try {
+      const {
+        data: { user },
+        error: authError,
+      } = await supabase.auth.getUser();
+      if (authError || !user) {
+        router.push("/login");
+        return;
+      }
 
-    const { data, error } = await supabase
-      .from("solicitudes_presupuesto")
-      .select(
-        "id, estado, fecha_deseada, turno, estado_espacio, pre_presupuesto, precio_final, perfiles!solicitudes_presupuesto_id_proveedor_fkey(nombre), tipos_servicio(nombre)"
-      )
-      .eq("id_cliente", user.id)
-      .order("fecha_creacion", { ascending: false });
+      const { data, error } = await supabase
+        .from("solicitudes_presupuesto")
+        .select(
+          "id, estado, fecha_deseada, turno, estado_espacio, pre_presupuesto, precio_final, perfiles!solicitudes_presupuesto_id_proveedor_fkey(nombre), tipos_servicio(nombre)"
+        )
+        .eq("id_cliente", user.id)
+        .order("fecha_creacion", { ascending: false });
 
-    if (error) {
-      setError(error.message);
-    } else {
-      setSolicitudes((data ?? []) as MisSolicitud[]);
+      if (error) {
+        setError(mensajeDeError(error));
+      } else {
+        setSolicitudes((data ?? []) as MisSolicitud[]);
+      }
+    } catch {
+      setError(MENSAJE_ERROR_RED);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [router]);
 
   useEffect(() => {
@@ -81,19 +86,24 @@ export default function MisSolicitudesPage() {
 
   async function decidir(id: number, fn: "aprobar_solicitud" | "rechazar_solicitud") {
     setActingId(id);
-    const { error } = await supabase.rpc(fn, { p_solicitud_id: id });
-    setActingId(null);
-    if (error) {
-      mostrar(mensajeDeError(error), "error");
-      return;
+    try {
+      const { error } = await supabase.rpc(fn, { p_solicitud_id: id });
+      if (error) {
+        mostrar(mensajeDeError(error), "error");
+        return;
+      }
+      mostrar(
+        `Solicitud #${id} ${
+          fn === "aprobar_solicitud" ? "aprobada" : "rechazada"
+        } correctamente.`,
+        "exito"
+      );
+      cargar();
+    } catch {
+      mostrar(MENSAJE_ERROR_RED, "error");
+    } finally {
+      setActingId(null);
     }
-    mostrar(
-      `Solicitud #${id} ${
-        fn === "aprobar_solicitud" ? "aprobada" : "rechazada"
-      } correctamente.`,
-      "exito"
-    );
-    cargar();
   }
 
   return (

@@ -6,8 +6,16 @@ import Header from "@/components/Header";
 import Button from "@/components/ui/Button";
 import { Field, Select, TextInput } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
-import { mensajeDeError } from "@/lib/errors";
+import { mensajeDeError, MENSAJE_ERROR_RED } from "@/lib/errors";
 import { supabase } from "@/lib/supabaseClient";
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type ErroresRegistro = {
+  nombre?: string;
+  email?: string;
+  password?: string;
+};
 
 export default function RegistroPage() {
   const router = useRouter();
@@ -17,44 +25,78 @@ export default function RegistroPage() {
   const [telefono, setTelefono] = useState("");
   const [rol, setRol] = useState<"cliente" | "proveedor">("cliente");
   const [loading, setLoading] = useState(false);
+  const [errores, setErrores] = useState<ErroresRegistro>({});
   const { mostrar } = useToast();
+
+  function validar(): ErroresRegistro {
+    const nuevos: ErroresRegistro = {};
+
+    if (!nombre.trim()) {
+      nuevos.nombre = "Ingresá tu nombre.";
+    }
+    if (!email.trim()) {
+      nuevos.email = "Ingresá tu correo electrónico.";
+    } else if (!EMAIL_RE.test(email.trim())) {
+      nuevos.email = "Ingresá un correo electrónico válido.";
+    }
+    if (!password) {
+      nuevos.password = "Ingresá una contraseña.";
+    } else if (password.length < 6) {
+      nuevos.password = "La contraseña debe tener al menos 6 caracteres.";
+    }
+    return nuevos;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+
+    setErrores({});
+    const nuevosErrores = validar();
+    if (Object.values(nuevosErrores).some(Boolean)) {
+      setErrores(nuevosErrores);
+      mostrar("Revisá los campos marcados antes de continuar.", "error");
+      return;
+    }
+
     setLoading(true);
 
-    const { data, error: authError } = await supabase.auth.signUp({
-      email,
-      password,
-    });
+    try {
+      const { data, error: authError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+      });
 
-    if (authError) {
-      mostrar(mensajeDeError(authError), "error");
+      if (authError) {
+        mostrar(mensajeDeError(authError), "error");
+        setLoading(false);
+        return;
+      }
+
+      if (!data.user) {
+        mostrar("No se pudo crear el usuario.", "error");
+        setLoading(false);
+        return;
+      }
+
+      const { error: profileError } = await supabase.from("perfiles").insert({
+        id: data.user.id,
+        rol,
+        nombre,
+        telefono,
+        email: email.trim(),
+      });
+
+      if (profileError) {
+        mostrar(mensajeDeError(profileError), "error");
+        setLoading(false);
+        return;
+      }
+
+      router.push(rol === "cliente" ? "/solicitar" : "/proveedor");
+    } catch {
       setLoading(false);
-      return;
+      mostrar(MENSAJE_ERROR_RED, "error");
     }
-
-    if (!data.user) {
-      mostrar("No se pudo crear el usuario.", "error");
-      setLoading(false);
-      return;
-    }
-
-    const { error: profileError } = await supabase.from("perfiles").insert({
-      id: data.user.id,
-      rol,
-      nombre,
-      telefono,
-      email,
-    });
-
-    if (profileError) {
-      mostrar(mensajeDeError(profileError), "error");
-      setLoading(false);
-      return;
-    }
-
-    router.push(rol === "cliente" ? "/solicitar" : "/proveedor");
   }
 
   return (
@@ -75,14 +117,17 @@ export default function RegistroPage() {
       </p>
 
       <form onSubmit={handleSubmit} className="mt-8 flex flex-col gap-4">
-        <Field label="Nombre" htmlFor="nombre">
+        <Field label="Nombre" htmlFor="nombre" error={errores.nombre}>
           <TextInput
             id="nombre"
             type="text"
             required
             placeholder="Tu nombre"
             value={nombre}
-            onChange={(e) => setNombre(e.target.value)}
+            onChange={(e) => {
+              setNombre(e.target.value);
+              setErrores((prev) => ({ ...prev, nombre: undefined }));
+            }}
           />
         </Field>
 
@@ -96,18 +141,21 @@ export default function RegistroPage() {
           />
         </Field>
 
-        <Field label="Correo electrónico" htmlFor="email">
+        <Field label="Correo electrónico" htmlFor="email" error={errores.email}>
           <TextInput
             id="email"
             type="email"
             required
             placeholder="correo@ejemplo.com"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setErrores((prev) => ({ ...prev, email: undefined }));
+            }}
           />
         </Field>
 
-        <Field label="Contraseña" htmlFor="password">
+        <Field label="Contraseña" htmlFor="password" error={errores.password}>
           <TextInput
             id="password"
             type="password"
@@ -115,7 +163,10 @@ export default function RegistroPage() {
             minLength={6}
             placeholder="Mínimo 6 caracteres"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setErrores((prev) => ({ ...prev, password: undefined }));
+            }}
           />
         </Field>
 

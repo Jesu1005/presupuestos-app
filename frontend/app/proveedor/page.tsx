@@ -6,6 +6,7 @@ import Header from "@/components/Header";
 import Badge from "@/components/ui/Badge";
 import Button from "@/components/ui/Button";
 import { TarjetasSkeleton } from "@/components/ui/Skeleton";
+import { MENSAJE_ERROR_RED, mensajeDeError } from "@/lib/errors";
 import { formatearFecha, formatearMoneda } from "@/lib/format";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -47,31 +48,43 @@ export default function ProveedorPage() {
   const [filtro, setFiltro] = useState<Filtro>("todos");
 
   useEffect(() => {
+    let activo = true;
+
     (async () => {
-      const {
-        data: { user },
-        error: authError,
-      } = await supabase.auth.getUser();
-      if (authError || !user) {
-        router.push("/login");
-        return;
-      }
+      try {
+        const {
+          data: { user },
+          error: authError,
+        } = await supabase.auth.getUser();
+        if (authError || !user) {
+          router.push("/login");
+          return;
+        }
+        if (!activo) return;
 
-      const { data, error } = await supabase
-        .from("solicitudes_presupuesto")
-        .select(
-          "id, estado, fecha_deseada, turno, pre_presupuesto, precio_final, perfiles!solicitudes_presupuesto_id_cliente_fkey(nombre), tipos_servicio(nombre)"
-        )
-        .eq("id_proveedor", user.id)
-        .order("fecha_creacion", { ascending: false });
+        const { data, error } = await supabase
+          .from("solicitudes_presupuesto")
+          .select(
+            "id, estado, fecha_deseada, turno, pre_presupuesto, precio_final, perfiles!solicitudes_presupuesto_id_cliente_fkey(nombre), tipos_servicio(nombre)"
+          )
+          .eq("id_proveedor", user.id)
+          .order("fecha_creacion", { ascending: false });
 
-      if (error) {
-        setError(error.message);
-      } else {
-        setSolicitudes((data ?? []) as SolicitudProveedor[]);
+        if (error) {
+          setError(mensajeDeError(error));
+        } else {
+          setSolicitudes((data ?? []) as SolicitudProveedor[]);
+        }
+      } catch {
+        if (activo) setError(MENSAJE_ERROR_RED);
+      } finally {
+        if (activo) setLoading(false);
       }
-      setLoading(false);
     })();
+
+    return () => {
+      activo = false;
+    };
   }, [router]);
 
   const conteos = solicitudes.reduce<Record<string, number>>((acc, s) => {

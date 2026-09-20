@@ -10,10 +10,11 @@ type FieldProps = {
   label: string;
   htmlFor: string;
   hint?: string;
+  error?: string;
   children: ReactNode;
 };
 
-export function Field({ label, htmlFor, hint, children }: FieldProps) {
+export function Field({ label, htmlFor, hint, error, children }: FieldProps) {
   return (
     <div>
       <label htmlFor={htmlFor} className={labelClass}>
@@ -21,6 +22,11 @@ export function Field({ label, htmlFor, hint, children }: FieldProps) {
       </label>
       {children}
       {hint && <p className="mt-1 text-xs text-zinc-500">{hint}</p>}
+      {error && (
+        <p role="alert" className="mt-1 text-sm text-red-600">
+          {error}
+        </p>
+      )}
     </div>
   );
 }
